@@ -1,0 +1,235 @@
+-- Before importing data into Microsoft SQL Server 
+-- The CSVs were Downloaded from (https://divvy-tripdata.s3.amazonaws.com/index.html)
+-- Once the data was downloaded some basic formatting and clearing was done
+
+-- Then the files were saved as xlsx. and Uploaded to Microsoft SQL Server
+-- File Format in SQL Server is 3 letter Month followed by YYYY
+
+--Checking Format after upload
+Select *
+From dbo.Dec2020
+Where end_station_name is not null
+AND start_station_name is not null
+order by started_at;
+-- used this to check why there was an error when merging tables found incorrectly named column
+
+
+-- Create New Table to merge data into
+drop table cyclistic_tripdata;
+
+CREATE TABLE cyclistic_tripdata (
+ride_id nvarchar(255),
+rideable_type nvarchar(50),
+started_at datetime2,
+ended_at datetime2,
+start_station_name nvarchar(255),
+start_lat float,
+start_lng float,
+end_station_name nvarchar(255),
+end_lat float,
+end_lng float,
+member_casual nvarchar(50) );
+
+--Insert 12 Months of Data into cyclistic_tripdata
+
+
+INSERT INTO [dbo].[cyclistic_tripdata] (ride_id, rideable_type,  started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual)
+(Select ride_id, rideable_type,  started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Oct2020]) 
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Nov2020]) 
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Dec2020]) 
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Jan2021]) 
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Feb2021]) 
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Mar2021])
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Apr2021]) 
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[May2021]) 
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Jun2021])
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Jul2021]) 
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Aug2021])
+UNION ALL
+(Select ride_id, rideable_type, started_at, ended_at,  start_station_name, end_station_name, start_lat, start_lng, end_lat, end_lng, member_casual
+From Cyclistic_Portfolio.dbo.[Sep2021]);
+
+--After Exploring the data in cyclistic trip data I decided to make a new column for ride length in minutes
+
+ALTER TABLE [dbo].[cyclistic_tripdata]
+ADD ride_length int;
+
+UPDATE [dbo].[cyclistic_tripdata]
+SET ride_length = DATEDIFF(MINUTE, started_at, ended_at);
+
+-- Next to make the data more readable we will use the start_at datetime to extract the month and year out
+
+ALTER TABLE [dbo].[cyclistic_tripdata]
+ADD day_of_week nvarchar(50),
+month_m nvarchar(50),
+year_y nvarchar(50);
+
+UPDATE [dbo].[cyclistic_tripdata]
+SET day_of_week = DATENAME(WEEKDAY, started_at),
+month_m = DATENAME(MONTH, started_at),
+year_y = year(started_at);
+
+-- Giving month its own column as an integer
+ALTER TABLE [dbo].[cyclistic_tripdata]       
+ADD month_int int;
+
+UPDATE [dbo].[cyclistic_tripdata]             
+SET month_int = DATEPART(MONTH, started_at);
+
+--Create Table with accurate and uniform start_lat and start_lng
+--drop table clean_start_lat_lng
+CREATE TABLE clean_start_lat_lng (
+start_station_name nvarchar(255),
+start_lat_clean float,
+start_lng_clean float);
+
+--Making start lat and lng uniform 
+
+Select
+Distinct start_station_name,
+ROUND(AVG(start_lat),6) AS lat,
+ROUND(AVG(start_lng),6) AS lng
+From [dbo].cyclistic_tripdata
+group by start_station_name;
+
+--Inserting clean start lat and lng to new table
+INSERT INTO clean_start_lat_lng (start_station_name, start_lat_clean, start_lng_clean) 
+SELECT DISTINCT start_station_name, ROUND(AVG(start_lat),6), ROUND(AVG(start_lng),6)
+FROM [dbo].cyclistic_tripdata
+group by start_station_name;
+
+--Joining our main table with our cleaned start lat and lng
+
+SELECT cyclistic_tripdata.*, clean_start_lat_lng.start_lat_clean, clean_start_lat_lng.start_lng_clean
+FROM cyclistic_tripdata
+INNER JOIN clean_start_lat_lng ON cyclistic_tripdata.start_station_name = clean_start_lat_lng.start_station_name
+order by start_station_name;
+
+--ADDing the cleaned start lat and lng to our main table
+	
+ALTER table cyclistic_tripdata add start_lat_clean float
+update cyclistic_tripdata
+set cyclistic_tripdata.start_lat_clean = (select clean_start_lat_lng.start_lat_clean from clean_start_lat_lng where cyclistic_tripdata.start_station_name = clean_start_lat_lng.start_station_name)
+where exists ( Select clean_start_lat_lng.start_lat_clean from clean_start_lat_lng where cyclistic_tripdata.start_station_name = clean_start_lat_lng.start_station_name);
+	
+ALTER table cyclistic_tripdata add start_lng_clean float
+update cyclistic_tripdata
+set cyclistic_tripdata.start_lng_clean = (select clean_start_lat_lng.start_lng_clean from clean_start_lat_lng where cyclistic_tripdata.start_station_name = clean_start_lat_lng.start_station_name)
+where exists ( Select clean_start_lat_lng.start_lng_clean from clean_start_lat_lng where cyclistic_tripdata.start_station_name = clean_start_lat_lng.start_station_name);
+
+--Repeating the above process to bring cleaned and accurate end lat and lng to main table cyclistic_tripdata
+
+CREATE TABLE clean_end_lat_lng (
+end_station_name nvarchar(255),
+end_lat_clean float,
+end_lng_clean float);
+
+INSERT INTO clean_end_lat_lng (end_station_name, end_lat_clean, end_lng_clean) 
+SELECT DISTINCT end_station_name, ROUND(AVG(end_lat),6), ROUND(AVG(end_lng),6)
+FROM [dbo].cyclistic_tripdata
+group by end_station_name;
+
+ALTER table cyclistic_tripdata add end_lat_clean float
+update cyclistic_tripdata
+set cyclistic_tripdata.end_lat_clean = (select clean_end_lat_lng.end_lat_clean from clean_end_lat_lng where cyclistic_tripdata.end_station_name = clean_end_lat_lng.end_station_name)
+where exists ( Select clean_end_lat_lng.end_lat_clean from clean_end_lat_lng where cyclistic_tripdata.end_station_name = clean_end_lat_lng.end_station_name);
+
+ALTER table cyclistic_tripdata add end_lng_clean float
+update cyclistic_tripdata
+set cyclistic_tripdata.end_lng_clean = (select clean_end_lat_lng.end_lng_clean from clean_end_lat_lng where cyclistic_tripdata.end_station_name = clean_end_lat_lng.end_station_name)
+where exists ( Select clean_end_lat_lng.end_lng_clean from clean_end_lat_lng where cyclistic_tripdata.end_station_name = clean_end_lat_lng.end_station_name);
+
+--Finding test data (871 rows)
+Select *
+From cyclistic_tripdata
+Where start_station_name like '%TEST%'
+OR end_station_name like '%TEST%';
+
+--Adding weekday or weekend for analysis
+ALTER TABLE [dbo].[cyclistic_tripdata]
+ADD weekday_or_weekend nvarchar(50);
+
+UPDATE [dbo].[cyclistic_tripdata]
+Set  weekday_or_weekend = CASE 
+		WHEN day_of_week = 'Saturday' THEN 'Weekend'  
+		WHEN day_of_week = 'Sunday' THEN 'Weekend'
+		Else 'Weekday'
+	End;
+
+--Adding Time Block for analysis
+ALTER TABLE [dbo].[cyclistic_tripdata]
+ADD time_block nvarchar(50);
+
+UPDATE [dbo].[cyclistic_tripdata]
+Set  time_block = CASE 
+		WHEN DATEPART(hour, started_at) = 0 THEN 'Early Morning'  
+		WHEN DATEPART(hour, started_at) = 1 THEN 'Early Morning'
+		WHEN DATEPART(hour, started_at) = 2 THEN 'Early Morning'
+		WHEN DATEPART(hour, started_at) = 3 THEN 'Early Morning'
+		WHEN DATEPART(hour, started_at) = 4 THEN 'Early Morning'
+		WHEN DATEPART(hour, started_at) = 5 THEN 'Early Morning'
+		WHEN DATEPART(hour, started_at) = 6 THEN 'Morning'
+		WHEN DATEPART(hour, started_at) = 7 THEN 'Morning'
+		WHEN DATEPART(hour, started_at) = 8 THEN 'Morning'
+		WHEN DATEPART(hour, started_at) = 9 THEN 'Morning'
+		WHEN DATEPART(hour, started_at) = 10 THEN 'Morning'
+		WHEN DATEPART(hour, started_at) = 11 THEN 'Morning'
+		WHEN DATEPART(hour, started_at) = 12 THEN 'Afternoon'
+		WHEN DATEPART(hour, started_at) = 13 THEN 'Afternoon'
+		WHEN DATEPART(hour, started_at) = 14 THEN 'Afternoon'
+		WHEN DATEPART(hour, started_at) = 15 THEN 'Afternoon'
+		WHEN DATEPART(hour, started_at) = 16 THEN 'Afternoon'
+		WHEN DATEPART(hour, started_at) = 17 THEN 'Afternoon'
+		Else 'Night'
+	End;
+
+--Giving Date its own column for simplicity
+ALTER TABLE [dbo].[cyclistic_tripdata]       
+ADD date_yyyy_mm_dd date
+
+UPDATE [dbo].[cyclistic_tripdata]
+SET date_yyyy_mm_dd = CAST(started_at AS date);
+
+--Removing Test data, rows that lack start and/or end station info
+--Finish cleaning data by deleting rows where (NULL values), (ride length = 0), (ride length < 0), (ride_length > 1440 mins), and start_station_name includes "test"
+--Removing the orignial incorrect/inaccurate lat and lngs
+--This should just give the rides that we want to analyze and visualization
+
+DELETE FROM [dbo].[cyclistic_tripdata]
+Where ride_id IS NULL OR
+start_station_name IS NULL OR
+start_station_name LIKE '%test%' OR
+end_station_name IS NULL OR
+end_station_name LIKE '%test%' OR
+ride_length IS NULL OR
+ride_length = 0 OR
+ride_length < 0 OR
+ride_length > 1440 
+
+ALTER TABLE [dbo].[cyclistic_tripdata]
+DROP COLUMN start_lat, start_lng, end_lat, end_lng;
+
+
+Select *
+From cyclistic_tripdata
